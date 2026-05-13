@@ -1,0 +1,129 @@
+# VPS Monitor
+
+> Open-source, self-hosted monitoring & management dashboard for your VPS fleet.
+> Built with **Next.js 14**, **MongoDB**, and a tiny **bash agent** that installs in one line.
+
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
+![Next.js](https://img.shields.io/badge/Next.js-14-black)
+![MongoDB](https://img.shields.io/badge/MongoDB-7-green)
+
+## ✨ Features
+
+- **One-line install** on any VPS (Ubuntu, Debian, CentOS, Rocky, Alma, Fedora, Arch, Alpine…)
+- **Auto-registration** — no SSH keys, no copy-pasting tokens. Just run the install command.
+- **Live metrics** every 15s: CPU, memory, swap, disk, network, load avg, uptime, processes.
+- **Beautiful dark dashboard** with real-time charts (Recharts).
+- **Single-admin model** — no public sign-ups. The first account becomes admin.
+- **Self-hosted** — your metrics live in your MongoDB, not someone else's cloud.
+- **Tiny agent** — pure bash, no compiled binaries, ~5 MB RAM footprint.
+
+## 🚀 Quick start (Docker)
+
+```bash
+git clone https://github.com/<you>/vps-monitoring.git
+cd vps-monitoring
+cp .env.example .env
+
+# Edit .env, at minimum set:
+#   JWT_SECRET=$(openssl rand -hex 64)
+#   NEXT_PUBLIC_APP_URL=https://monitor.yourdomain.com
+
+docker compose up -d
+```
+
+Open `http://localhost:3000`, create your admin account, and you're done.
+
+## 🖥️ Adding a server
+
+In the dashboard, click **Add server**. Copy the install command and run it on your VPS:
+
+```bash
+curl -fsSL https://monitor.yourdomain.com/api/install | sudo bash
+```
+
+The VPS will:
+
+1. Register itself with the dashboard (auto-generates `agentId` + token).
+2. Install a systemd service `vps-monitor-agent` that survives reboots.
+3. Start posting metrics immediately.
+
+No login, no manual steps required.
+
+### Manage the agent on the VPS
+
+```bash
+sudo systemctl status vps-monitor-agent    # check status
+sudo systemctl restart vps-monitor-agent   # restart
+sudo journalctl -u vps-monitor-agent -f    # tail logs
+sudo /opt/vps-monitor-agent/uninstall.sh   # remove
+```
+
+## 🛠️ Local development
+
+```bash
+npm install
+cp .env.example .env.local
+# point MONGODB_URI to a running MongoDB
+npm run dev
+```
+
+Then visit `http://localhost:3000`.
+
+## ⚙️ Environment variables
+
+| Variable                       | Required | Default                                | Description                                  |
+| ------------------------------ | -------- | -------------------------------------- | -------------------------------------------- |
+| `MONGODB_URI`                  | yes      | `mongodb://localhost:27017/vps-monitoring` | MongoDB connection string.                 |
+| `JWT_SECRET`                   | yes (prod) | dev-only fallback                    | Secret used to sign session cookies.         |
+| `NEXT_PUBLIC_APP_URL`          | yes      | `http://localhost:3000`                | Public URL where the dashboard is reachable. |
+| `AGENT_OFFLINE_AFTER_SECONDS`  | no       | `60`                                   | After how many seconds an agent is "offline". |
+
+## 🏗️ Architecture
+
+```
+ ┌────────────────────┐  HTTPS   ┌────────────────────┐  Mongo  ┌───────────────┐
+ │  VPS #1 (bash)     │ ───────► │  Next.js API       │ ──────► │  MongoDB      │
+ │  /opt/vps-mon-...  │          │  /api/agents/*     │         │  agents,      │
+ └────────────────────┘          │  /api/auth/*       │         │  metrics      │
+ ┌────────────────────┐          └─────────┬──────────┘         └───────────────┘
+ │  VPS #2 (bash)     │ ───────►           │
+ └────────────────────┘                    ▼
+                                  ┌────────────────────┐
+                                  │  Next.js Web UI    │  ◄── Admin (browser)
+                                  └────────────────────┘
+```
+
+- **Web**: Next.js 14 App Router (this repo).
+- **DB**: MongoDB. Two collections: `agents` (metadata + token), `metrics` (time-series).
+- **Agent**: A 200-line bash script (`/public/install.sh`) that reads `/proc`, `df`, `uptime` etc.
+- **Auth**:
+  - Admin → HttpOnly cookie + HS256 JWT.
+  - Agent → unique per-VPS token, validated on every heartbeat.
+
+## 🔒 Security notes
+
+- The first user created via `/setup` is the only admin. Public registration is **disabled**.
+- Each agent's token is a one-way credential; compromising one VPS does **not** affect others.
+- Always run the dashboard behind HTTPS (e.g. Caddy, Nginx, Traefik).
+- Set a strong `JWT_SECRET` (`openssl rand -hex 64`).
+
+## 📦 API endpoints
+
+| Method | Path                            | Auth        | Description                       |
+| ------ | ------------------------------- | ----------- | --------------------------------- |
+| GET    | `/api/install`                  | public      | Returns the install bash script.  |
+| POST   | `/api/setup`                    | once only   | Creates the admin account.        |
+| POST   | `/api/auth/login`               | public      | Sign in.                          |
+| POST   | `/api/auth/logout`              | session     | Sign out.                         |
+| POST   | `/api/auth/password`            | session     | Change password.                  |
+| POST   | `/api/agents/register`          | public      | Agent auto-registration.          |
+| POST   | `/api/agents/heartbeat`         | agent token | Agent posts metrics.              |
+| GET    | `/api/agents`                   | session     | List all agents.                  |
+| GET    | `/api/agents/:id`               | session     | Get one agent's details.          |
+| PATCH  | `/api/agents/:id`               | session     | Update label/tags.                |
+| DELETE | `/api/agents/:id`               | session     | Remove agent + metrics.           |
+| GET    | `/api/agents/:id/metrics`       | session     | Time-series metrics.              |
+
+## 📄 License
+
+MIT — do whatever you want, just don't blame us.
