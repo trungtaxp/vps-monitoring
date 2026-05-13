@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAppSettings } from '@/lib/app-settings';
 import { getSessionFromCookies } from '@/lib/auth';
-import { isTelegramAlertsConfigured, sendTelegramSettingsTest } from '@/lib/telegram-alerts';
+import { isTelegramAlertsConfigured, sendTelegramSettingsTestResult } from '@/lib/telegram-alerts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,12 +18,9 @@ export async function POST() {
         { status: 400 }
       );
     }
-    const ok = await sendTelegramSettingsTest(settings);
-    if (!ok) {
-      return NextResponse.json(
-        { error: 'Telegram từ chối tin (kiểm tra token, chat id, quyền bot trong nhóm).' },
-        { status: 502 }
-      );
+    const r = await sendTelegramSettingsTestResult(settings);
+    if (!r.ok) {
+      return NextResponse.json({ error: r.description, httpStatus: r.httpStatus }, { status: 502 });
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

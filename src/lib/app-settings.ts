@@ -1,5 +1,11 @@
 import { connectDB } from '@/lib/db';
 import { AppSettings, type IAppSettings } from '@/lib/models/AppSettings';
+import {
+  sanitizeTelegramBotToken,
+  sanitizeTelegramChatId,
+  telegramGetMe,
+  TelegramTokenRejectedError,
+} from '@/lib/telegram-client';
 
 export type ResolvedAppSettings = {
   telegramBotToken: string | undefined;
@@ -14,8 +20,10 @@ const CACHE_TTL_MS = 5000;
 let cache: { expiresAt: number; value: ResolvedAppSettings } | null = null;
 
 function toResolved(doc: IAppSettings): ResolvedAppSettings {
-  const token = doc.telegramBotToken?.trim();
-  const chat = doc.telegramChatId?.trim();
+  const rawT = doc.telegramBotToken ?? '';
+  const rawC = doc.telegramChatId ?? '';
+  const token = rawT ? sanitizeTelegramBotToken(rawT) : '';
+  const chat = rawC ? sanitizeTelegramChatId(rawC) : '';
   return {
     telegramBotToken: token || undefined,
     telegramChatId: chat || undefined,
@@ -96,13 +104,23 @@ export async function updateAppSettings(input: UpdateAppSettingsInput): Promise<
 
   const newToken = input.telegramBotToken?.trim();
   if (newToken) {
-    doc.telegramBotToken = newToken;
+    const clean = sanitizeTelegramBotToken(newToken);
+    if (!clean.includes(':')) {
+      throw new TelegramTokenRejectedError(
+        'Token bot không đúng định dạng (cần dạng 123456789:AAH… từ @BotFather).'
+      );
+    }
+    const me = await telegramGetMe(clean);
+    if (!me.ok) {
+      throw new TelegramTokenRejectedError(me.description);
+    }
+    doc.telegramBotToken = clean;
   } else if (input.clearTelegramBotToken) {
     doc.telegramBotToken = '';
   }
 
   if (input.telegramChatId !== undefined) {
-    doc.telegramChatId = input.telegramChatId.trim();
+    doc.telegramChatId = sanitizeTelegramChatId(input.telegramChatId);
   }
   if (input.alertCpuPercent !== undefined) {
     doc.alertCpuPercent = Math.max(1, Math.min(100, Math.round(input.alertCpuPercent)));

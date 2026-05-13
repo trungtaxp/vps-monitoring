@@ -5,6 +5,7 @@ import {
   updateAppSettings,
 } from '@/lib/app-settings';
 import { getSessionFromCookies } from '@/lib/auth';
+import { TelegramTokenRejectedError } from '@/lib/telegram-client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -45,6 +46,9 @@ export async function PUT(req: Request) {
     const settings = await updateAppSettings(parsed.data);
     return NextResponse.json(settings);
   } catch (e) {
+    if (e instanceof TelegramTokenRejectedError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
     console.error('[settings/alerts PUT]', e);
     return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
   }

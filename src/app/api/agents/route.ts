@@ -60,6 +60,8 @@ export async function GET() {
             memTotalBytes: m.memTotalBytes,
             diskUsedBytes: m.diskUsedBytes,
             diskTotalBytes: m.diskTotalBytes,
+            netRxBytes: m.netRxBytes,
+            netTxBytes: m.netTxBytes,
             netRxBps: m.netRxBps,
             netTxBps: m.netTxBps,
             uptimeSeconds: m.uptimeSeconds,

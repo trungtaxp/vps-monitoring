@@ -7,6 +7,7 @@ import {
   Cpu,
   HardDrive,
   MemoryStick,
+  Network,
   PlusCircle,
   RefreshCw,
   ServerCog,
@@ -38,6 +39,9 @@ interface AgentSummary {
     memTotalBytes: number;
     diskUsedBytes: number;
     diskTotalBytes: number;
+    /** Cumulative bytes since boot (from /proc/net/dev). */
+    netRxBytes: number;
+    netTxBytes: number;
     netRxBps: number;
     netTxBps: number;
     uptimeSeconds: number;
@@ -64,6 +68,10 @@ export function DashboardClient() {
   const usedMem = agents.reduce((acc, a) => acc + (a.latest?.memUsedBytes ?? 0), 0);
   const totalDisk = agents.reduce((acc, a) => acc + (a.totalDiskBytes ?? 0), 0);
   const usedDisk = agents.reduce((acc, a) => acc + (a.latest?.diskUsedBytes ?? 0), 0);
+
+  const sumRxBps = agents.reduce((acc, a) => acc + (a.latest?.netRxBps ?? 0), 0);
+  const sumTxBps = agents.reduce((acc, a) => acc + (a.latest?.netTxBps ?? 0), 0);
+  const totalBps = sumRxBps + sumTxBps;
 
   return (
     <div className="space-y-6">
@@ -93,7 +101,7 @@ export function DashboardClient() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-5">
         <StatCard
           icon={ServerCog}
           label="Servers"
@@ -121,6 +129,17 @@ export function DashboardClient() {
           value={formatBytes(usedDisk)}
           hint={`of ${formatBytes(totalDisk)} total`}
           accent="warning"
+        />
+        <StatCard
+          icon={Network}
+          label="Network traffic"
+          value={formatBps(totalBps)}
+          hint={
+            total
+              ? `↓ ${formatBps(sumRxBps)} · ↑ ${formatBps(sumTxBps)} · combined speed across servers`
+              : 'No agents yet'
+          }
+          accent="brand"
         />
       </div>
 
@@ -222,10 +241,20 @@ function ServerCard({ agent: a, onUpdated }: { agent: AgentSummary; onUpdated: (
           />
         </div>
 
-        <div className="flex items-center justify-between border-t border-border pt-3 text-[11px] text-ink-soft">
-          <span>↓ {formatBps(a.latest?.netRxBps ?? 0)}</span>
-          <span>↑ {formatBps(a.latest?.netTxBps ?? 0)}</span>
-          <span>up {formatUptime(a.latest?.uptimeSeconds ?? 0)}</span>
+        <div className="space-y-1.5 border-t border-border pt-3 text-[11px] text-ink-soft">
+          <div className="flex items-center justify-between gap-2">
+            <span>↓ {formatBps(a.latest?.netRxBps ?? 0)}</span>
+            <span>↑ {formatBps(a.latest?.netTxBps ?? 0)}</span>
+            <span className="shrink-0">up {formatUptime(a.latest?.uptimeSeconds ?? 0)}</span>
+          </div>
+          <div className="flex flex-wrap justify-between gap-x-2 gap-y-0.5 text-[10px] text-ink-muted">
+            <span title="Cumulative since boot (kernel counters)">
+              cumul. ↓ {formatBytes(a.latest?.netRxBytes ?? 0)}
+            </span>
+            <span title="Cumulative since boot (kernel counters)">
+              ↑ {formatBytes(a.latest?.netTxBytes ?? 0)}
+            </span>
+          </div>
         </div>
       </div>
     </div>

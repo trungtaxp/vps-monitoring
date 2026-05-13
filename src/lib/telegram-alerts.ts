@@ -1,4 +1,6 @@
 import type { ResolvedAppSettings } from './app-settings';
+import type { TelegramCallError, TelegramCallOk } from './telegram-client';
+import { telegramSendMessageHtml } from './telegram-client';
 import { formatBytes, percent } from './utils';
 
 function escapeHtml(s: string): string {
@@ -99,47 +101,35 @@ export async function sendTelegramOverloadIfNeeded(
   const href = url.replace(/&/g, '&amp;');
   lines.push(`<a href="${href}">Mở chi tiết trên dashboard</a>`);
 
-  const ok = await postTelegramHtml(
-    lines.join('\n'),
+  const result = await telegramSendMessageHtml(
     settings.telegramBotToken!,
-    settings.telegramChatId!
+    settings.telegramChatId!,
+    lines.join('\n')
   );
-  return ok;
+  if (!result.ok) {
+    console.error('[telegram] sendMessage failed:', result.httpStatus, result.description);
+    return false;
+  }
+  return true;
 }
 
 /** Sends a short test message (Settings → “Gửi tin thử”). */
 export async function sendTelegramSettingsTest(settings: ResolvedAppSettings): Promise<boolean> {
-  if (!isTelegramAlertsConfigured(settings)) return false;
-  return postTelegramHtml(
-    `<b>VPS Monitor</b>\n${escapeHtml(
-      'Thử nghiệm — nếu bạn thấy tin này, bot và chat id đã đúng.'
-    )}`,
-    settings.telegramBotToken!,
-    settings.telegramChatId!
-  );
+  const r = await sendTelegramSettingsTestResult(settings);
+  return r.ok;
 }
 
-async function postTelegramHtml(html: string, token: string, chatId: string): Promise<boolean> {
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: html,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string };
-    if (!res.ok || !data.ok) {
-      console.error('[telegram] sendMessage failed:', res.status, data?.description ?? data);
-      return false;
-    }
-    return true;
-  } catch (e) {
-    console.error('[telegram] sendMessage error:', e);
-    return false;
+export async function sendTelegramSettingsTestResult(
+  settings: ResolvedAppSettings
+): Promise<TelegramCallOk | TelegramCallError> {
+  if (!isTelegramAlertsConfigured(settings)) {
+    return { ok: false, httpStatus: 400, description: 'Chưa cấu hình bot token + chat id.' };
   }
+  return telegramSendMessageHtml(
+    settings.telegramBotToken!,
+    settings.telegramChatId!,
+    `<b>VPS Monitor</b>\n${escapeHtml(
+      'Thử nghiệm — nếu bạn thấy tin này, bot và chat id đã đúng.'
+    )}`
+  );
 }
